@@ -1,0 +1,209 @@
+name: 构建、发布镜像和Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '要构建的版本号'
+        required: true
+        default: '2.8.4'
+        type: string
+
+# 设置环境变量
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+  IMAGE_NAME: dubbo-admin
+  WAR_FILE: dubbo-admin-${{ github.event.inputs.version }}.war
+
+jobs:
+  build-and-release:
+    # 使用最新的Ubuntu运行器
+    runs-on: ubuntu-latest
+
+    # 设置必要的权限（包括创建Release的权限）
+    permissions:
+      contents: write
+      packages: write
+      actions: read
+      checks: write
+
+    steps:
+      # 步骤1: 检出代码仓库
+      - name: 检出代码仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整的git历史，用于创建标签
+
+      # 步骤2: 设置Docker Buildx（支持多平台构建）
+      - name: 设置Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 步骤3: 登录到Docker Hub
+      - name: 登录到Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      # 步骤4: 执行构建脚本
+      - name: 执行构建脚本
+        run: |
+          # 给构建脚本添加执行权限
+          chmod +x ./.github/workflows/scripts/build.sh
+          # 执行构建脚本
+          ./.github/workflows/scripts/build.sh ${{ github.event.inputs.version }}
+
+      # 步骤5: 验证构建产物
+      - name: 验证构建产物
+        run: |
+          # 构建WAR文件路径
+          WAR_PATH="dubbox-dubbox-${{ github.event.inputs.version }}/dubbo-admin/target/${{ env.WAR_FILE }}"
+          
+          # 检查WAR文件是否存在
+          if [ ! -f "$WAR_PATH" ]; then
+            echo "错误: 在 $WAR_PATH 找不到WAR文件"
+            exit 1
+          fi
+          
+          echo "WAR文件存在: $WAR_PATH"
+          
+          # 切换到目标目录
+          cd "dubbox-dubbox-${{ github.event.inputs.version }}/dubbo-admin/target"
+          
+          # 生成MD5校验和文件
+          md5sum "${{ env.WAR_FILE }}" > "${{ env.WAR_FILE }}.md5"
+          echo "已创建MD5校验和文件"
+          
+          # 显示文件列表用于验证
+          echo "生成的文件:"
+          ls -la
+          
+          # 显示MD5校验和内容
+          echo "MD5校验和内容:"
+          cat "${{ env.WAR_FILE }}.md5"
+
+      # 步骤6: 准备Docker构建上下文
+      - name: 准备Docker构建上下文
+        run: |
+          # 将WAR文件复制到根目录，作为Docker构建上下文的一部分
+          cp "dubbox-dubbox-${{ github.event.inputs.version }}/dubbo-admin/target/${{ env.WAR_FILE }}" .
+          cp "dubbox-dubbox-${{ github.event.inputs.version }}/dubbo-admin/target/${{ env.WAR_FILE }}.md5" .
+          
+          # 显示根目录中的相关文件
+          echo "Docker构建上下文中的文件:"
+          ls -la *.war *.md5
+
+      # 步骤7: 构建并推送Docker镜像
+      - name: 构建并推送Docker镜像
+        uses: docker/build-push-action@v5
+        with:
+          context: .                     # Docker构建上下文目录
+          file: ./Dockerfile             # Dockerfile路径
+          platforms: linux/amd64,linux/arm64  # 目标平台架构
+          push: true                     # 推送镜像到仓库
+          tags: |                        # 镜像标签
+            ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:v${{ github.event.inputs.version }}
+          build-args: |                  # 传递给Dockerfile的构建参数
+            VERSION=v${{ github.event.inputs.version }}
+            WAR_FILE=${{ env.WAR_FILE }}
+          cache-from: type=gha           # 使用GitHub Actions缓存
+          cache-to: type=gha,mode=max
+
+      # 步骤8: 为Release准备文件
+      - name: 为Release准备文件
+        run: |
+          # 确保有release目录
+          mkdir -p release
+          
+          # 复制WAR文件和MD5文件到release目录
+          cp "${{ env.WAR_FILE }}" "release/"
+          cp "${{ env.WAR_FILE }}.md5" "release/"
+          
+          # 可选：创建版本说明文件
+          cat > "release/CHANGELOG.md" << EOF
+          # Dubbo Admin ${{ github.event.inputs.version }}
+          
+          ## 构建信息
+          - 版本: v${{ github.event.inputs.version }}
+          - 构建时间: $(date -u)
+          - 镜像: ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:v${{ github.event.inputs.version }}
+          
+          ## 包含文件
+          1. ${{ env.WAR_FILE }} - Dubbo Admin应用文件
+          2. ${{ env.WAR_FILE }}.md5 - MD5校验和文件
+          
+          ## 使用说明
+          将WAR文件部署到Tomcat或使用提供的Docker镜像运行。
+          
+          ## Docker镜像使用
+          \`\`\`bash
+          docker pull ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version }}
+          docker run -p 8080:8080 ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version }}
+          \`\`\`
+          EOF
+          
+          # 显示release目录内容
+          echo "Release目录内容:"
+          ls -la release/
+
+      # 步骤9: 创建Git标签
+      - name: 创建Git标签
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // 创建标签
+            const tagName = `v${{ github.event.inputs.version }}`;
+            try {
+              // 检查标签是否已存在
+              await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `tags/${tagName}`
+              });
+              console.log(`标签 ${tagName} 已存在，跳过创建`);
+            } catch (error) {
+              // 标签不存在，创建新标签
+              console.log(`创建新标签: ${tagName}`);
+              const response = await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/tags/${tagName}`,
+                sha: context.sha
+              });
+              console.log(`标签创建成功: ${tagName}`);
+            }
+
+      # 步骤10: 创建GitHub Release并上传构建产物
+      - name: 创建GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: Dubbo Admin ${{ github.event.inputs.version }}
+          body_path: release/CHANGELOG.md
+          draft: false
+          prerelease: false
+          files: |
+            release/${{ env.WAR_FILE }}
+            release/${{ env.WAR_FILE }}.md5
+          generate_release_notes: false
+
+      # 步骤11: 显示构建信息
+      - name: 显示构建和发布信息
+        run: |
+          echo "========================================="
+          echo "构建和发布完成!"
+          echo "========================================="
+          echo ""
+          echo "Docker镜像信息:"
+          echo "  - ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:v${{ github.event.inputs.version }}"
+          echo ""
+          echo "GitHub Release信息:"
+          echo "  - 标签: v${{ github.event.inputs.version }}"
+          echo "  - 名称: Dubbo Admin ${{ github.event.inputs.version }}"
+          echo ""
+          echo "已发布的构建产物:"
+          echo "  - ${{ env.WAR_FILE }}"
+          echo "  - ${{ env.WAR_FILE }}.md5"
+          echo ""
+          echo "========================================="

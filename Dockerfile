@@ -1,0 +1,14 @@
+# 第一阶段：构建阶段
+FROM alpine:3.14 as builder
+RUN apk add --no-cache openjdk8 unzip
+WORKDIR /app
+COPY ${SOURCE_DIR}/dubbo-admin/target/dubbo-admin-${VERSION}.war dubbo-admin.war
+RUN mkdir -p /app/webapps/ROOT && \
+    unzip dubbo-admin.war -d /app/webapps/ROOT && \
+    rm -f dubbo-admin.war
+
+# 第二阶段：运行阶段
+FROM tomcat:8.5.100-jre8
+LABEL name="dubbo-admin" maintainer="liulike" version="${VERSION}" description="基于 https://github.com/dangdangdotcom/dubbox 的源代码构建的 Dubbo Admin ${VERSION}"
+COPY --from=builder /app/webapps /usr/local/tomcat/webapps
+EXPOSE 8080
