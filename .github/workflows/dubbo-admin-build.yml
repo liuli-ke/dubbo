@@ -49,31 +49,39 @@ jobs:
         id: build-project
         run: |
           VERSION=${{ github.event.inputs.version }}
-          
-          # 下载源代码
-          echo "下载 Dubbox ${VERSION} 源代码..."
-          curl -L "https://codeload.github.com/dangdangdotcom/dubbox/tar.gz/refs/tags/dubbox-${VERSION}.tar.gz" -o "dubbox-${VERSION}.tar.gz"
-          
-          # 检查下载是否成功
-          if [ ! -f "dubbox-${VERSION}.tar.gz" ]; then
-            echo "错误: 下载失败"
-            exit 1
+
+          # 尝试下载dubbox版本
+          echo "尝试下载 Dubbox ${VERSION} 源代码 (dubbox-${VERSION}.tar.gz)..."
+          if curl -L -f "https://github.com/dangdangdotcom/dubbox/archive/refs/tags/dubbox-${VERSION}.tar.gz" -o "dubbox-${VERSION}.tar.gz"; then
+            echo "成功下载 dubbox-${VERSION}.tar.gz"
+          else
+            echo "未找到 dubbox-${VERSION}.tar.gz，尝试下载 dubbo-${VERSION}.tar.gz..."
+
+            # 尝试下载dubbo版本
+            if curl -L -f "https://github.com/dangdangdotcom/dubbox/archive/refs/tags/dubbo-${VERSION}.tar.gz" -o "dubbo-${VERSION}.tar.gz"; then
+              echo "错误: 未找到dubbox-${VERSION}，找到dubbo-${VERSION}不属于构建计划范围"
+              exit 1
+            else
+              echo "错误: 未找到dubbox-${VERSION}，输入版本可能正确"
+              exit 1
+            fi
           fi
-          
+
           # 解压源代码
+          echo "解压源代码..."
           tar -xzf "dubbox-${VERSION}.tar.gz"
-          
+
           # 使用 Maven 构建
           echo "使用 Maven 构建项目..."
           docker run --rm --name dubbo-build -v "$(pwd)/dubbox-dubbox-${VERSION}:/opt/dubbo" -w /opt/dubbo maven:3.6.3-jdk-8 mvn clean install -DskipTests
-          
+
           # 检查构建结果
           WAR_PATH="dubbox-dubbox-${VERSION}/dubbo-admin/target/dubbo-admin-${VERSION}.war"
           if [ ! -f "${WAR_PATH}" ]; then
             echo "错误: 构建失败，未找到 WAR 文件"
             exit 1
           fi
-          
+
           echo "构建成功"
 
       # 步骤5: 准备Docker构建上下文
