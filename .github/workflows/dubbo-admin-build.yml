@@ -1,4 +1,4 @@
-name: 构建、发布镜像和Release
+name: dubbo-admin-build
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ env:
   WAR_FILE: dubbo-admin-${{ github.event.inputs.version }}.war
 
 jobs:
-  build-and-release:
+  dubbo-admin-build:
     # 使用最新的Ubuntu运行器
     runs-on: ubuntu-latest
 
