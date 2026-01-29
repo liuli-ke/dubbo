@@ -52,7 +52,7 @@ jobs:
           
           # 下载源代码
           echo "下载 Dubbox ${VERSION} 源代码..."
-          curl -L "https://codeload.github.com/dangdangdotcom/dubbox/tar.gz/refs/tags/dubbox-${VERSION}" -o "dubbox-${VERSION}.tar.gz"
+          curl -L "https://codeload.github.com/dangdangdotcom/dubbox/tar.gz/refs/tags/dubbox-${VERSION}.tar.gz" -o "dubbox-${VERSION}.tar.gz"
           
           # 检查下载是否成功
           if [ ! -f "dubbox-${VERSION}.tar.gz" ]; then
