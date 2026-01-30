@@ -173,6 +173,7 @@ jobs:
           cp "dubbo-admin-${VERSION}.war.md5" "release/"
           cp "dubbo-admin-v${VERSION}-multi_arch-images.tar.gz" "release/"
           cp "dubbo-admin-v${VERSION}-multi_arch-images.tar.gz.md5" "release/"
+          cp "dubbox-${VERSION}.tar.gz" "release/"
           
           # 创建版本说明文件
           cat > "release/CHANGELOG.md" << EOF
@@ -188,6 +189,7 @@ jobs:
           2. dubbo-admin-${VERSION}.war.md5 - WAR文件MD5校验和
           3. dubbo-admin-v${VERSION}-multi_arch-images.tar.gz - 多架构Docker镜像包
           4. dubbo-admin-v${VERSION}-multi_arch-images.tar.gz.md5 - 镜像包MD5校验和
+          5. dubbox-${VERSION}.tar.gz - 构建使用的源代码包
           
           ## 使用说明
           将WAR文件部署到Tomcat或使用提供的Docker镜像运行。
@@ -238,6 +240,7 @@ jobs:
             release/dubbo-admin-${{ github.event.inputs.version }}.war.md5
             release/dubbo-admin-v${{ github.event.inputs.version }}-multi_arch-images.tar.gz
             release/dubbo-admin-v${{ github.event.inputs.version }}-multi_arch-images.tar.gz.md5
+            release/dubbox-${{ github.event.inputs.version }}.tar.gz
           generate_release_notes: false
 
       # 步骤10: 显示构建信息
@@ -260,6 +263,7 @@ jobs:
           echo "  - dubbo-admin-${{ github.event.inputs.version }}.war.md5"
           echo "  - dubbo-admin-v${{ github.event.inputs.version }}-multi_arch-images.tar.gz"
           echo "  - dubbo-admin-v${{ github.event.inputs.version }}-multi_arch-images.tar.gz.md5"
+          echo "  - dubbox-${{ github.event.inputs.version }}.tar.gz"
           echo ""
           echo "========================================="
 
